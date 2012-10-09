@@ -6,6 +6,7 @@ try:
     import json
 except ImportError:
     import simplejson as json
+from xml.utils import iso8601
 
 # Python 2.5 compat fix
 if not hasattr(urlparse, 'parse_qsl'):
@@ -19,7 +20,7 @@ class ComputeClient(httplib2.Http):
     def __init__(self, config):
         super(ComputeClient, self).__init__()
         self.config = config
-        self.management_url = None
+        self.management_urls = None
         self.auth_token = None
         
         # httplib2 overrides
@@ -49,14 +50,16 @@ class ComputeClient(httplib2.Http):
         return resp, body
 
     def _cs_request(self, url, method, **kwargs):
-        if not self.management_url:
+        if not self.management_urls:
+            self.authenticate()
+        if time.time() > self.auth_token['expiration'] - 5:
             self.authenticate()
 
         # Perform the request once. If we get a 401 back then it
         # might be because the auth token expired, so try to
         # re-authenticate and try again. If it still fails, bail.
         try:
-            kwargs.setdefault('headers', {})['X-Auth-Token'] = self.auth_token
+            kwargs.setdefault('headers', {})['X-Auth-Token'] = self.auth_token['id']
             resp, body = self.request(self.management_url + url, method, **kwargs)
             return resp, body
         except exceptions.Unauthorized, ex:
@@ -81,13 +84,12 @@ class ComputeClient(httplib2.Http):
         return self._cs_request(url, 'DELETE', **kwargs)
 
     def authenticate(self):
-        headers = {
-            'X-Auth-User': self.config.username,
-            'X-Auth-Key': self.config.apikey,
-        }
-        resp, body = self.request(self.config.auth_url, 'GET', headers=headers)
-        self.management_url = resp['x-server-management-url']
-        self.auth_token = resp['x-auth-token']
+        body = {"auth":{"RAX-KSKEY:apiKeyCredentials":{"username":self.config.username, "apiKey": self.config.apikey}}}
+        resp, body = self.request(self.config.auth_url, 'POST', body=body)
+        self.auth_token = {'expiration': iso8601.parse(body['access']['token']['expires']), 'id': body['access']['token']['id']}
+        self.management_urls = {}
+        for serviceCatalog in body['access']['serviceCatalog']:
+            self.management_urls[serviceCatalog['name']] = serviceCatalog['endpoints']
         
     def _munge_get_url(self, url):
         """

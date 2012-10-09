@@ -89,7 +89,7 @@ class Config(object):
     DEFAULTS = {
         'username': None,
         'apikey': None,
-        'auth_url': "https://auth.api.rackspacecloud.com/v1.0",
+        'auth_url': "https://identity.api.rackspacecloud.com/v2.0/tokens",
         'user_agent': 'python-openstack-compute/%s' % __version__,
         'allow_cache': False,
         'cloud_api' : 'RACKSPACE',
